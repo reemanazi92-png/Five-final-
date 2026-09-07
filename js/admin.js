@@ -38,16 +38,28 @@ async function startNewQuestion() {
   }
 
   if (available.length === 0) {
-    alert("نفذت الأسئلة المتاحة بهذا المستوى! سيتم إعادة تصفير السجل.");
+    alert("نفدت الأسئلة المتاحة بهذا المستوى! سيتم إعادة تصفير السجل.");
     await set(ref(db, "gameState/usedQuestions"), []);
     available = questionsBank;
   }
 
   const randomQ = available[Math.floor(Math.random() * available.length)];
 
-  // تحديث حالة الفايربيس للبدء
+  // --- مرحلة العد التنازلي (5 - 1) ---
+  for (let countdown = 5; countdown >= 1; countdown--) {
+    await update(ref(db, "gameState"), {
+      isActive: false,
+      isCountdown: true,
+      countdownValue: countdown,
+      statusMessage: `🔥 استعدوا! تبدأ الجولة خلال: ${countdown}`
+    });
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+
+  // --- بدء السؤال رسميًا بعد انتهاء العد التنازلي ---
   const newState = {
     isActive: true,
+    isCountdown: false,
     currentQuestion: randomQ,
     currentRound: (state.currentRound || 0) + 1,
     timer: settings.questionDuration,
@@ -117,6 +129,7 @@ async function resetAll() {
     clearInterval(timerInterval);
     await set(ref(db, "gameState"), {
       isActive: false,
+      isCountdown: false,
       currentRound: 0,
       scores: { team1: 0, team2: 0 },
       settings: { team1Name: "الفريق الأزرق", team2Name: "الفريق الأحمر", questionDuration: 30, stealDuration: 10, difficulty: "all" },
