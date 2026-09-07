@@ -1,7 +1,8 @@
-import { db, ref, onValue, set } from "./firebase-config.js";
+import { db, ref, onValue, set, update, get } from "./firebase-config.js";
 import { soundFx } from "./utils.js";
+import { initialQuestions } from "./questions.js";
 
-// توليد QR Code لكل فريق تلقائياً بناءً على الرابط الحالي
+// توليد QR Code لكل فريق
 const baseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
 const team1Url = `${baseUrl}/team.html?team=team1`;
 const team2Url = `${baseUrl}/team.html?team=team2`;
@@ -26,60 +27,65 @@ const stealBanner = document.getElementById("steal-container");
 const team1AnswersLive = document.getElementById("team1-answers-live");
 const team2AnswersLive = document.getElementById("team2-answers-live");
 
-// الاستماع المباشر للتغيرات في الفايربيس
+let timerInterval = null;
+let isStarting = false;
+let questionsBank = [...initialQuestions];
+
+// الاستماع المباشر وتسيير اللعبة أوتوماتيكيًا
 onValue(ref(db, "gameState"), (snapshot) => {
   const state = snapshot.val();
   if (!state) return;
 
-  // إعدادات وتحديثات الأسماء والنقاط
-  if (state.settings) {
-    team1NameEl.innerText = `🟦 ${state.settings.team1Name || "الفريق الأول"}`;
-    team2NameEl.innerText = `🟥 ${state.settings.team2Name || "الفريق الثاني"}`;
+  // 1. إعدادات الأسماء والنقاط
+  const team1Name = state.settings?.team1Name || "الفريق الأول";
+  const team2Name = state.settings?.team2Name || "الفريق الثاني";
+
+  if (team1NameEl) team1NameEl.innerText = `🟦 ${team1Name}`;
+  if (team2NameEl) team2NameEl.innerText = `🟥 ${team2Name}`;
+  if (team1ScoreEl) team1ScoreEl.innerText = `${team1Name}: ${state.scores?.team1 || 0}`;
+  if (team2ScoreEl) team2ScoreEl.innerText = `${team2Name}: ${state.scores?.team2 || 0}`;
+
+  // 2. التحقق من انضمام الفريقين وبدء اللعبة أوتوماتيكيًا
+  if (state.team1Joined && state.team2Joined && !state.isActive && !state.isCountdown && !isStarting) {
+    isStarting = true;
+    autoStartNewQuestion();
   }
 
-  if (state.scores) {
-    team1ScoreEl.innerText = `${state.settings?.team1Name || "الفريق الأول"}: ${state.scores.team1 || 0}`;
-    team2ScoreEl.innerText = `${state.settings?.team2Name || "الفريق الثاني"}: ${state.scores.team2 || 0}`;
-  }
-
-  // 1. التعامل مع مرحلة العد التنازلي قبل بدء السؤال (5 - 1)
+  // 3. عرض العد التنازلي (5 -> 1)
   if (state.isCountdown) {
-    timerEl.innerText = state.countdownValue;
-    roundEl.innerText = "استعدوا!";
-    questionTextEl.innerText = state.statusMessage || "تجهزوا للإجابة...";
+    if (timerEl) timerEl.innerText = state.countdownValue;
+    if (roundEl) roundEl.innerText = "استعدوا!";
+    if (questionTextEl) questionTextEl.innerText = state.statusMessage || "تجهزوا للإجابة...";
     if (categoryEl) categoryEl.innerText = "العد التنازلي";
-    stealBanner.style.display = "none";
+    if (stealBanner) stealBanner.style.display = "none";
     soundFx.tick();
     return;
   }
 
-  // 2. التعامل مع الحالة العادية للعبة
-  roundEl.innerText = `الجولة ${state.currentRound || 1}`;
-  timerEl.innerText = state.timer ?? 30;
+  // 4. عرض الجولة والسؤال أثناء اللعب
+  if (roundEl) roundEl.innerText = `الجولة ${state.currentRound || 1}`;
+  if (timerEl) timerEl.innerText = state.timer ?? 30;
 
   if (state.timer <= 5 && state.timer > 0 && state.isActive) {
     timerEl.classList.add("pulse-warning");
     soundFx.tick();
   } else {
-    timerEl.classList.remove("pulse-warning");
+    if (timerEl) timerEl.classList.remove("pulse-warning");
   }
 
-  // عرض السؤال
   if (state.isActive && state.currentQuestion) {
-    questionTextEl.innerText = state.currentQuestion.question;
+    if (questionTextEl) questionTextEl.innerText = state.currentQuestion.question;
     if (categoryEl) categoryEl.innerText = state.currentQuestion.category || "التصنيف";
   } else if (!state.isActive && !state.isCountdown) {
-    questionTextEl.innerText = "في انتظار بدء الجولة من المنظم...";
+    if (questionTextEl) questionTextEl.innerText = "بانتظار انضمام الفريقين عبر الـ QR...";
   }
 
-  // حالة السرقة
-  stealBanner.style.display = state.isStealPhase ? "block" : "none";
+  if (stealBanner) stealBanner.style.display = state.isStealPhase ? "block" : "none";
 
-  // معالجة إجابات الفريقين المباشرة
   renderAnswers(state.team1Answers || {}, team1AnswersLive, team1CountEl, state.team1Status, team1StatusEl);
   renderAnswers(state.team2Answers || {}, team2AnswersLive, team2CountEl, state.team2Status, team2StatusEl);
 
-  // الفائز بجميع الجولات
+  // الفائز باللعبة
   if (state.winner) {
     soundFx.win();
     confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
@@ -89,13 +95,116 @@ onValue(ref(db, "gameState"), (snapshot) => {
   }
 });
 
+// دالة بدء السؤال تلقائيًا وإدارة المؤقت
+async function autoStartNewQuestion() {
+  clearInterval(timerInterval);
+
+  const snapshot = await get(ref(db, "gameState"));
+  const state = snapshot.val() || {};
+  const settings = state.settings || { questionDuration: 30, difficulty: "all" };
+
+  const usedIds = state.usedQuestions || [];
+  let available = questionsBank.filter(q => !usedIds.includes(q.id));
+  if (settings.difficulty !== "all") {
+    available = available.filter(q => q.difficulty === settings.difficulty);
+  }
+
+  if (available.length === 0) {
+    await set(ref(db, "gameState/usedQuestions"), []);
+    available = questionsBank;
+  }
+
+  const randomQ = available[Math.floor(Math.random() * available.length)];
+
+  // العد التنازلي (5 -> 1)
+  for (let countdown = 5; countdown >= 1; countdown--) {
+    await update(ref(db, "gameState"), {
+      isActive: false,
+      isCountdown: true,
+      countdownValue: countdown,
+      statusMessage: `🔥 انضم الفريقان! تبدأ الجولة خلال: ${countdown}`
+    });
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
+
+  // إطلاق السؤال
+  const newState = {
+    isActive: true,
+    isCountdown: false,
+    currentQuestion: randomQ,
+    currentRound: (state.currentRound || 0) + 1,
+    timer: settings.questionDuration,
+    team1Answers: {},
+    team2Answers: {},
+    team1Status: "🟢 يجيب الآن",
+    team2Status: "🟢 يجيب الآن",
+    team1Joined: true,
+    team2Joined: true,
+    isStealPhase: false,
+    settings: settings,
+    scores: state.scores || { team1: 0, team2: 0 },
+    usedQuestions: [...usedIds, randomQ.id]
+  };
+
+  await set(ref(db, "gameState"), newState);
+  isStarting = false;
+  runTimer(settings.questionDuration);
+}
+
+function runTimer(seconds) {
+  let timeLeft = seconds;
+  timerInterval = setInterval(async () => {
+    timeLeft--;
+    await update(ref(db, "gameState"), { timer: timeLeft });
+
+    const snap = await get(ref(db, "gameState"));
+    const val = snap.val();
+
+    if (val.roundWinner) {
+      clearInterval(timerInterval);
+      handleRoundWin(val.roundWinner);
+      return;
+    }
+
+    if (timeLeft <= 0) {
+      clearInterval(timerInterval);
+      handleTimeOut();
+    }
+  }, 1000);
+}
+
+async function handleRoundWin(winnerTeam) {
+  const snap = await get(ref(db, "gameState"));
+  const state = snap.val();
+  const currentScores = state.scores || { team1: 0, team2: 0 };
+  currentScores[winnerTeam] = (currentScores[winnerTeam] || 0) + 1;
+
+  await update(ref(db, "gameState"), {
+    isActive: false,
+    scores: currentScores,
+    roundWinner: null,
+    [`${winnerTeam}Status`]: "🏆 فاز بالجولة!"
+  });
+}
+
+async function handleTimeOut() {
+  await update(ref(db, "gameState"), {
+    isActive: false,
+    isStealPhase: true,
+    timer: 10,
+    team1Status: "⏰ انتهى الوقت",
+    team2Status: "⏰ انتهى الوقت"
+  });
+}
+
 function renderAnswers(answersObj, container, countEl, status, statusEl) {
+  if (!container) return;
   container.innerHTML = "";
   const answers = Object.values(answersObj);
   const validAnswers = answers.filter(a => a.valid);
 
-  countEl.innerText = `${validAnswers.length} / 5`;
-  statusEl.innerText = status || "🟢 يجيب الآن";
+  if (countEl) countEl.innerText = `${validAnswers.length} / 5`;
+  if (statusEl) statusEl.innerText = status || "🟢 يجيب الآن";
 
   validAnswers.forEach(ans => {
     const chip = document.createElement("div");
