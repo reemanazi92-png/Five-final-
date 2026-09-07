@@ -1,14 +1,30 @@
-import { db, ref, set, update, get } from "./firebase-config.js";
+import { db, ref, set, update, get, onValue } from "./firebase-config.js";
 import { initialQuestions } from "./questions.js";
 
 let timerInterval = null;
 let questionsBank = [...initialQuestions];
+let autoStartTriggered = false; // لمنع التكرار التلقائي
 
-// تهيئة اللعبة أو إعادة الضبط
-document.getElementById("btn-start-game").addEventListener("click", startNewQuestion);
-document.getElementById("btn-next-question").addEventListener("click", startNewQuestion);
-document.getElementById("btn-save-settings").addEventListener("click", saveSettings);
-document.getElementById("btn-reset-all").addEventListener("click", resetAll);
+// تهيئة الأحداث اليدوية
+document.getElementById("btn-start-game")?.addEventListener("click", () => startNewQuestion());
+document.getElementById("btn-next-question")?.addEventListener("click", () => startNewQuestion());
+document.getElementById("btn-save-settings")?.addEventListener("click", saveSettings);
+document.getElementById("btn-reset-all")?.addEventListener("click", resetAll);
+
+// --- التشغيل التلقائي بمجرد دخول الفريقين ---
+onValue(ref(db, "gameState"), (snapshot) => {
+  const state = snapshot.val();
+  if (!state) return;
+
+  // التحقق من انضمام الفريقين وأن اللعبة ليست نشطة حاليًا
+  const team1Joined = state.team1Status && !state.team1Status.includes("في انتظار");
+  const team2Joined = state.team2Status && !state.team2Status.includes("في انتظار");
+
+  if (team1Joined && team2Joined && !state.isActive && !state.isCountdown && !autoStartTriggered) {
+    autoStartTriggered = true;
+    startNewQuestion();
+  }
+});
 
 async function saveSettings() {
   const team1Name = document.getElementById("input-team1-name").value;
@@ -45,18 +61,18 @@ async function startNewQuestion() {
 
   const randomQ = available[Math.floor(Math.random() * available.length)];
 
-  // --- مرحلة العد التنازلي (5 - 1) ---
+  // --- العد التنازلي (5 -> 1) ---
   for (let countdown = 5; countdown >= 1; countdown--) {
     await update(ref(db, "gameState"), {
       isActive: false,
       isCountdown: true,
       countdownValue: countdown,
-      statusMessage: `🔥 استعدوا! تبدأ الجولة خلال: ${countdown}`
+      statusMessage: `🔥 اكتمل الفريقان! تبدأ الجولة خلال: ${countdown}`
     });
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
 
-  // --- بدء السؤال رسميًا بعد انتهاء العد التنازلي ---
+  // --- بدء الجولة رسمياً ---
   const newState = {
     isActive: true,
     isCountdown: false,
@@ -83,7 +99,6 @@ function runTimer(seconds) {
     timeLeft--;
     await update(ref(db, "gameState"), { timer: timeLeft });
 
-    // فحص الفائز أثناء الوقت
     const snap = await get(ref(db, "gameState"));
     const val = snap.val();
 
@@ -112,6 +127,8 @@ async function handleRoundWin(winnerTeam) {
     roundWinner: null,
     [`${winnerTeam}Status`]: "🏆 فاز بالجولة!"
   });
+  
+  autoStartTriggered = false; // السماح بالجولة التالية
 }
 
 async function handleTimeOut() {
@@ -122,11 +139,14 @@ async function handleTimeOut() {
     team1Status: "⏰ انتهى الوقت",
     team2Status: "⏰ انتهى الوقت"
   });
+  
+  autoStartTriggered = false;
 }
 
 async function resetAll() {
   if (confirm("هل أنت تأكد من إعادة ضبط اللعبة بالكامل وتصفير النقاط؟")) {
     clearInterval(timerInterval);
+    autoStartTriggered = false;
     await set(ref(db, "gameState"), {
       isActive: false,
       isCountdown: false,
