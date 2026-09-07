@@ -3,41 +3,22 @@ import { initialQuestions } from "./questions.js";
 
 let timerInterval = null;
 let questionsBank = [...initialQuestions];
-let autoStartTriggered = false; // لمنع التكرار التلقائي
+let isStarting = false; // منع تكرار التشغيل أكثر من مرة
 
-// تهيئة الأحداث اليدوية
-document.getElementById("btn-start-game")?.addEventListener("click", () => startNewQuestion());
-document.getElementById("btn-next-question")?.addEventListener("click", () => startNewQuestion());
-document.getElementById("btn-save-settings")?.addEventListener("click", saveSettings);
-document.getElementById("btn-reset-all")?.addEventListener("click", resetAll);
-
-// --- التشغيل التلقائي بمجرد دخول الفريقين ---
+// الاستماع المباشر لانضمام الفريقين
 onValue(ref(db, "gameState"), (snapshot) => {
   const state = snapshot.val();
   if (!state) return;
 
-  // التحقق من انضمام الفريقين وأن اللعبة ليست نشطة حاليًا
-  const team1Joined = state.team1Status && !state.team1Status.includes("في انتظار");
-  const team2Joined = state.team2Status && !state.team2Status.includes("في انتظار");
+  // التحقق من انضمام الفريقين وأن اللعبة متوقفة حالياً
+  const team1Ready = state.team1Joined === true;
+  const team2Ready = state.team2Joined === true;
 
-  if (team1Joined && team2Joined && !state.isActive && !state.isCountdown && !autoStartTriggered) {
-    autoStartTriggered = true;
+  if (team1Ready && team2Ready && !state.isActive && !state.isCountdown && !isStarting) {
+    isStarting = true;
     startNewQuestion();
   }
 });
-
-async function saveSettings() {
-  const team1Name = document.getElementById("input-team1-name").value;
-  const team2Name = document.getElementById("input-team2-name").value;
-  const timer = parseInt(document.getElementById("select-timer").value);
-  const stealTimer = parseInt(document.getElementById("input-steal-timer").value);
-  const difficulty = document.getElementById("select-difficulty").value;
-
-  await update(ref(db, "gameState/settings"), {
-    team1Name, team2Name, questionDuration: timer, stealDuration: stealTimer, difficulty
-  });
-  alert("تم حفظ الإعدادات بنجاح!");
-}
 
 async function startNewQuestion() {
   clearInterval(timerInterval);
@@ -46,7 +27,6 @@ async function startNewQuestion() {
   const state = snapshot.val() || {};
   const settings = state.settings || { questionDuration: 30, difficulty: "all" };
 
-  // اختيار سؤال غير مكرر
   const usedIds = state.usedQuestions || [];
   let available = questionsBank.filter(q => !usedIds.includes(q.id));
   if (settings.difficulty !== "all") {
@@ -54,7 +34,6 @@ async function startNewQuestion() {
   }
 
   if (available.length === 0) {
-    alert("نفدت الأسئلة المتاحة بهذا المستوى! سيتم إعادة تصفير السجل.");
     await set(ref(db, "gameState/usedQuestions"), []);
     available = questionsBank;
   }
@@ -67,12 +46,12 @@ async function startNewQuestion() {
       isActive: false,
       isCountdown: true,
       countdownValue: countdown,
-      statusMessage: `🔥 اكتمل الفريقان! تبدأ الجولة خلال: ${countdown}`
+      statusMessage: `🔥 اكتمل دخول الفريقين! تبدأ الجولة خلال: ${countdown}`
     });
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
 
-  // --- بدء الجولة رسمياً ---
+  // --- بدء السؤال ---
   const newState = {
     isActive: true,
     isCountdown: false,
@@ -83,6 +62,8 @@ async function startNewQuestion() {
     team2Answers: {},
     team1Status: "🟢 يجيب الآن",
     team2Status: "🟢 يجيب الآن",
+    team1Joined: true,
+    team2Joined: true,
     isStealPhase: false,
     settings: settings,
     scores: state.scores || { team1: 0, team2: 0 },
@@ -90,6 +71,7 @@ async function startNewQuestion() {
   };
 
   await set(ref(db, "gameState"), newState);
+  isStarting = false;
   runTimer(settings.questionDuration);
 }
 
@@ -118,8 +100,8 @@ function runTimer(seconds) {
 async function handleRoundWin(winnerTeam) {
   const snap = await get(ref(db, "gameState"));
   const state = snap.val();
-  const currentScores = state.scores;
-  currentScores[winnerTeam] += 1;
+  const currentScores = state.scores || { team1: 0, team2: 0 };
+  currentScores[winnerTeam] = (currentScores[winnerTeam] || 0) + 1;
 
   await update(ref(db, "gameState"), {
     isActive: false,
@@ -127,8 +109,6 @@ async function handleRoundWin(winnerTeam) {
     roundWinner: null,
     [`${winnerTeam}Status`]: "🏆 فاز بالجولة!"
   });
-  
-  autoStartTriggered = false; // السماح بالجولة التالية
 }
 
 async function handleTimeOut() {
@@ -139,23 +119,8 @@ async function handleTimeOut() {
     team1Status: "⏰ انتهى الوقت",
     team2Status: "⏰ انتهى الوقت"
   });
-  
-  autoStartTriggered = false;
 }
 
-async function resetAll() {
-  if (confirm("هل أنت تأكد من إعادة ضبط اللعبة بالكامل وتصفير النقاط؟")) {
-    clearInterval(timerInterval);
-    autoStartTriggered = false;
-    await set(ref(db, "gameState"), {
-      isActive: false,
-      isCountdown: false,
-      currentRound: 0,
-      scores: { team1: 0, team2: 0 },
-      settings: { team1Name: "الفريق الأزرق", team2Name: "الفريق الأحمر", questionDuration: 30, stealDuration: 10, difficulty: "all" },
-      timer: 30,
-      usedQuestions: []
-    });
-    location.reload();
-  }
-}
+// أزرار التحكم اليدوي للإحتياط
+document.getElementById("btn-start-game")?.addEventListener("click", startNewQuestion);
+document.getElementById("btn-next-question")?.addEventListener("click", startNewQuestion);
