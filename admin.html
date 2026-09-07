@@ -1,141 +1,95 @@
-import { db, ref, set, update, get } from "./firebase-config.js";
-import { initialQuestions } from "./questions.js";
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>لوحة تحكم المنظم - تحدي السرعة</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
 
-let timerInterval = null;
-let questionsBank = [...initialQuestions];
+  <header class="main-header glass">
+    <h1>🎛️ لوحة تحكم المنظم - ⚡ تحدي السرعة ⚡</h1>
+  </header>
 
-// تهيئة اللعبة أو إعادة الضبط
-document.getElementById("btn-start-game").addEventListener("click", startNewQuestion);
-document.getElementById("btn-next-question").addEventListener("click", startNewQuestion);
-document.getElementById("btn-save-settings").addEventListener("click", saveSettings);
-document.getElementById("btn-reset-all").addEventListener("click", resetAll);
+  <main class="admin-grid">
+    <!-- الأزرار والتحكم المباشر -->
+    <div class="control-panel glass" style="padding: 1.5rem;">
+      <h3>🎮 التحكم بالمباراة</h3>
+      <button class="btn-action btn-success" id="btn-start-game">▶️ بدء اللعبة / سؤال جديد</button>
+      <button class="btn-action btn-primary" id="btn-next-question">⏭️ السؤال التالي</button>
+      <button class="btn-action btn-warning" id="btn-pause">⏸️ إيقاف / استكمال المؤقت</button>
+      <button class="btn-action btn-danger" id="btn-reset-round">🔄 إعادة الجولة</button>
+      <button class="btn-action btn-danger" id="btn-reset-all">🛑 إعادة ضبط اللعبة بالكامل</button>
 
-async function saveSettings() {
-  const team1Name = document.getElementById("input-team1-name").value;
-  const team2Name = document.getElementById("input-team2-name").value;
-  const timer = parseInt(document.getElementById("select-timer").value);
-  const stealTimer = parseInt(document.getElementById("input-steal-timer").value);
-  const difficulty = document.getElementById("select-difficulty").value;
+      <hr style="border-color: rgba(255,255,255,0.1); margin: 1rem 0;">
 
-  await update(ref(db, "gameState/settings"), {
-    team1Name, team2Name, questionDuration: timer, stealDuration: stealTimer, difficulty
-  });
-  alert("تم حفظ الإعدادات بنجاح!");
-}
+      <h3>⚙️ الإعدادات العامة</h3>
+      <div class="form-group">
+        <label>اسم الفريق الأول (🟦):</label>
+        <input type="text" id="input-team1-name" class="form-control" value="الفريق الأزرق">
+      </div>
+      <div class="form-group">
+        <label>اسم الفريق الثاني (🟥):</label>
+        <input type="text" id="input-team2-name" class="form-control" value="الفريق الأحمر">
+      </div>
+      <div class="form-group">
+        <label>مدة السؤال (ثواني):</label>
+        <select id="select-timer" class="form-control">
+          <option value="15">15 ثانية</option>
+          <option value="20">20 ثانية</option>
+          <option value="30" selected>30 ثانية</option>
+          <option value="45">45 ثانية</option>
+          <option value="60">60 ثانية</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>مدة وقت السرقة (ثواني):</label>
+        <input type="number" id="input-steal-timer" class="form-control" value="10">
+      </div>
+      <div class="form-group">
+        <label>مستوى الصعوبة المطلوب:</label>
+        <select id="select-difficulty" class="form-control">
+          <option value="all">🔥 جميع المستويات (عشوائي)</option>
+          <option value="easy">🟢 سهل</option>
+          <option value="medium">🟡 متوسط</option>
+          <option value="hard">🔴 صعب</option>
+        </select>
+      </div>
+      <button class="btn-action btn-primary" id="btn-save-settings">💾 حفظ الإعدادات</button>
+    </div>
 
-async function startNewQuestion() {
-  clearInterval(timerInterval);
+    <!-- إدارة بنك الأسئلة والتعديل اليدوي للنقاط -->
+    <div class="glass" style="padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem;">
+      <div>
+        <h3>📊 تعديل النقاط يدويًا</h3>
+        <div style="display: flex; gap: 1rem; margin-top: 0.5rem;">
+          <button class="btn-action btn-primary" id="btn-add-team1">+1 الفريق الأول</button>
+          <button class="btn-action btn-danger" id="btn-sub-team1">-1 الفريق الأول</button>
+          <button class="btn-action btn-primary" id="btn-add-team2">+1 الفريق الثاني</button>
+          <button class="btn-action btn-danger" id="btn-sub-team2">-1 الفريق الثاني</button>
+        </div>
+      </div>
 
-  const snapshot = await get(ref(db, "gameState"));
-  const state = snapshot.val() || {};
-  const settings = state.settings || { questionDuration: 30, difficulty: "all" };
+      <div>
+        <h3>➕ إضافة سؤال جديد لبنك الأسئلة</h3>
+        <div class="form-group">
+          <label>نص السؤال:</label>
+          <input type="text" id="new-q-text" class="form-control" placeholder="مثال: اذكر 5 خضروات">
+        </div>
+        <div class="form-group">
+          <label>التصنيف:</label>
+          <input type="text" id="new-q-cat" class="form-control" placeholder="طعام">
+        </div>
+        <div class="form-group">
+          <label>الإجابات المقبولة (مفصولة بفاصلة ,):</label>
+          <textarea id="new-q-answers" class="form-control" rows="3" placeholder="خيار, طماطم, خيار, جزر, بصل"></textarea>
+        </div>
+        <button class="btn-action btn-success" id="btn-add-question">إضافة السؤال للبنك</button>
+      </div>
+    </div>
+  </main>
 
-  // اختيار سؤال غير مكرر
-  const usedIds = state.usedQuestions || [];
-  let available = questionsBank.filter(q => !usedIds.includes(q.id));
-  if (settings.difficulty !== "all") {
-    available = available.filter(q => q.difficulty === settings.difficulty);
-  }
-
-  if (available.length === 0) {
-    alert("نفدت الأسئلة المتاحة بهذا المستوى! سيتم إعادة تصفير السجل.");
-    await set(ref(db, "gameState/usedQuestions"), []);
-    available = questionsBank;
-  }
-
-  const randomQ = available[Math.floor(Math.random() * available.length)];
-
-  // --- مرحلة العد التنازلي (5 - 1) ---
-  for (let countdown = 5; countdown >= 1; countdown--) {
-    await update(ref(db, "gameState"), {
-      isActive: false,
-      isCountdown: true,
-      countdownValue: countdown,
-      statusMessage: `🔥 استعدوا! تبدأ الجولة خلال: ${countdown}`
-    });
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }
-
-  // --- بدء السؤال رسميًا بعد انتهاء العد التنازلي ---
-  const newState = {
-    isActive: true,
-    isCountdown: false,
-    currentQuestion: randomQ,
-    currentRound: (state.currentRound || 0) + 1,
-    timer: settings.questionDuration,
-    team1Answers: {},
-    team2Answers: {},
-    team1Status: "🟢 يجيب الآن",
-    team2Status: "🟢 يجيب الآن",
-    isStealPhase: false,
-    settings: settings,
-    scores: state.scores || { team1: 0, team2: 0 },
-    usedQuestions: [...usedIds, randomQ.id]
-  };
-
-  await set(ref(db, "gameState"), newState);
-  runTimer(settings.questionDuration);
-}
-
-function runTimer(seconds) {
-  let timeLeft = seconds;
-  timerInterval = setInterval(async () => {
-    timeLeft--;
-    await update(ref(db, "gameState"), { timer: timeLeft });
-
-    // فحص الفائز أثناء الوقت
-    const snap = await get(ref(db, "gameState"));
-    const val = snap.val();
-
-    if (val.roundWinner) {
-      clearInterval(timerInterval);
-      handleRoundWin(val.roundWinner);
-      return;
-    }
-
-    if (timeLeft <= 0) {
-      clearInterval(timerInterval);
-      handleTimeOut();
-    }
-  }, 1000);
-}
-
-async function handleRoundWin(winnerTeam) {
-  const snap = await get(ref(db, "gameState"));
-  const state = snap.val();
-  const currentScores = state.scores;
-  currentScores[winnerTeam] += 1;
-
-  await update(ref(db, "gameState"), {
-    isActive: false,
-    scores: currentScores,
-    roundWinner: null,
-    [`${winnerTeam}Status`]: "🏆 فاز بالجولة!"
-  });
-}
-
-async function handleTimeOut() {
-  await update(ref(db, "gameState"), {
-    isActive: false,
-    isStealPhase: true,
-    timer: 10,
-    team1Status: "⏰ انتهى الوقت",
-    team2Status: "⏰ انتهى الوقت"
-  });
-}
-
-async function resetAll() {
-  if (confirm("هل أنت تأكد من إعادة ضبط اللعبة بالكامل وتصفير النقاط؟")) {
-    clearInterval(timerInterval);
-    await set(ref(db, "gameState"), {
-      isActive: false,
-      isCountdown: false,
-      currentRound: 0,
-      scores: { team1: 0, team2: 0 },
-      settings: { team1Name: "الفريق الأزرق", team2Name: "الفريق الأحمر", questionDuration: 30, stealDuration: 10, difficulty: "all" },
-      timer: 30,
-      usedQuestions: []
-    });
-    location.reload();
-  }
-}
+  <script type="module" src="js/admin.js"></script>
+</body>
+</html>
