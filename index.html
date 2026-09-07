@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>⚡ تحدي السرعة - الشاشة الرئيسية ⚡</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+</head>
+<body>
+
+  <header class="main-header glass">
+    <h1 class="main-title">⚡ تحدي السرعة ⚡</h1>
+    <div class="score-board">
+      <div class="score-badge team1" id="team1-score-display">الفريق الأول: 0</div>
+      <div class="score-badge team2" id="team2-score-display">الفريق الثاني: 0</div>
+    </div>
+  </header>
+
+  <main class="arena">
+    <!-- الفريق الأول -->
+    <section class="team-card glass team1">
+      <h2 id="team1-name-display" style="font-size: 1.8rem; color: var(--team1-color);">🟦 الفريق الأول</h2>
+      <div class="qr-box" id="qr-team1"></div>
+      <p style="font-size: 0.85rem; color: var(--text-muted);">امسح الرمز للانضمام للفريق</p>
+      
+      <div class="progress-tracker">
+        <div class="progress-number" id="team1-count">0 / 5</div>
+      </div>
+      <div class="status-indicator" id="team1-status">🟢 في انتظار السؤال</div>
+    </section>
+
+    <!-- المسرح الأوسط -->
+    <section class="center-stage glass">
+      <div class="round-info" id="round-number">الجولة 1</div>
+      <span class="category-tag" id="question-category">التصنيف</span>
+
+      <div class="question-card">
+        <h2 class="question-text" id="question-text">في انتظار بدء الجولة من المنظم...</h2>
+      </div>
+
+      <div class="timer-ring" id="timer-display">30</div>
+
+      <div id="steal-container" style="display: none;" class="steal-banner">
+        🔥 فرصة السرقة متاحة الآن!
+      </div>
+
+      <div class="answers-live">
+        <div class="team-answers-list" id="team1-answers-live"></div>
+        <div class="team-answers-list" id="team2-answers-live"></div>
+      </div>
+    </section>
+
+    <!-- الفريق الثاني -->
+    <section class="team-card glass team2">
+      <h2 id="team2-name-display" style="font-size: 1.8rem; color: var(--team2-color);">🟥 الفريق الثاني</h2>
+      <div class="qr-box" id="qr-team2"></div>
+      <p style="font-size: 0.85rem; color: var(--text-muted);">امسح الرمز للانضمام للفريق</p>
+
+      <div class="progress-tracker">
+        <div class="progress-number" id="team2-count">0 / 5</div>
+      </div>
+      <div class="status-indicator" id="team2-status">🟢 في انتظار السؤال</div>
+    </section>
+  </main>
+
+  <!-- Modal الفوز النهائي -->
+  <div id="winner-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content glass">
+      <h1 style="font-size: 3rem; margin-bottom: 1rem;">🏆 الفائز بالبطولة 🏆</h1>
+      <h2 id="winner-team-name" style="font-size: 2.5rem; color: var(--accent-gold);"></h2>
+      <p id="final-scores" style="font-size: 1.5rem; margin: 1.5rem 0;"></p>
+      <button class="btn-action btn-primary" style="margin: 0 auto;" onclick="location.reload()">🔄 لعبة جديدة</button>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
