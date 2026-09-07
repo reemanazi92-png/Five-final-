@@ -32,24 +32,44 @@ onValue(ref(db, "gameState"), (snapshot) => {
   if (!state) return;
 
   // إعدادات وتحديثات الأسماء والنقاط
-  team1NameEl.innerText = `🟦 ${state.settings.team1Name}`;
-  team2NameEl.innerText = `🟥 ${state.settings.team2Name}`;
-  team1ScoreEl.innerText = `${state.settings.team1Name}: ${state.scores.team1}`;
-  team2ScoreEl.innerText = `${state.settings.team2Name}: ${state.scores.team2}`;
-  roundEl.innerText = `الجولة ${state.currentRound || 1}`;
-  timerEl.innerText = state.timer;
+  if (state.settings) {
+    team1NameEl.innerText = `🟦 ${state.settings.team1Name || "الفريق الأول"}`;
+    team2NameEl.innerText = `🟥 ${state.settings.team2Name || "الفريق الثاني"}`;
+  }
 
-  if (state.timer <= 5 && state.timer > 0) {
+  if (state.scores) {
+    team1ScoreEl.innerText = `${state.settings?.team1Name || "الفريق الأول"}: ${state.scores.team1 || 0}`;
+    team2ScoreEl.innerText = `${state.settings?.team2Name || "الفريق الثاني"}: ${state.scores.team2 || 0}`;
+  }
+
+  // 1. التعامل مع مرحلة العد التنازلي قبل بدء السؤال (5 - 1)
+  if (state.isCountdown) {
+    timerEl.innerText = state.countdownValue;
+    roundEl.innerText = "استعدوا!";
+    questionTextEl.innerText = state.statusMessage || "تجهزوا للإجابة...";
+    if (categoryEl) categoryEl.innerText = "العد التنازلي";
+    stealBanner.style.display = "none";
+    soundFx.tick();
+    return;
+  }
+
+  // 2. التعامل مع الحالة العادية للعبة
+  roundEl.innerText = `الجولة ${state.currentRound || 1}`;
+  timerEl.innerText = state.timer ?? 30;
+
+  if (state.timer <= 5 && state.timer > 0 && state.isActive) {
     timerEl.classList.add("pulse-warning");
     soundFx.tick();
   } else {
     timerEl.classList.remove("pulse-warning");
   }
 
-  // السؤال
-  if (state.currentQuestion) {
+  // عرض السؤال
+  if (state.isActive && state.currentQuestion) {
     questionTextEl.innerText = state.currentQuestion.question;
-    categoryEl.innerText = state.currentQuestion.category;
+    if (categoryEl) categoryEl.innerText = state.currentQuestion.category || "التصنيف";
+  } else if (!state.isActive && !state.isCountdown) {
+    questionTextEl.innerText = "في انتظار بدء الجولة من المنظم...";
   }
 
   // حالة السرقة
