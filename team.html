@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>تحدي السرعة - شاشة الفريق</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <div class="mobile-container">
+    <header class="team-header glass" id="mobile-team-header">
+      <h2 id="mobile-team-name" style="color: white; font-size: 1.8rem;">لوحة الفريق</h2>
+    </header>
+
+    <div class="glass" style="padding: 1.2rem; text-align: center; margin-bottom: 1rem;">
+      <span class="category-tag" id="mobile-category">في الانتظار</span>
+      <h3 id="mobile-question" style="font-size: 1.4rem; margin-top: 0.5rem;">بانتظار السؤال القادم...</h3>
+      <div style="font-size: 2.5rem; font-weight: 900; color: var(--accent-gold); margin-top: 0.5rem;" id="mobile-timer">--</div>
+    </div>
+
+    <div class="input-group">
+      <input type="text" id="answer-input" class="game-input" placeholder="اكتب إجابتك هنا بسرعة..." autocomplete="off">
+      <button class="btn-submit" id="btn-send">إرسال</button>
+    </div>
+
+    <div class="feedback-msg" id="feedback-msg"></div>
+
+    <div class="glass" style="padding: 1rem; flex: 1;">
+      <h4 style="margin-bottom: 0.8rem; color: var(--text-muted);">إجابات الفريق المقبولة (<span id="team-valid-count">0</span>/5):</h4>
+      <div id="accepted-answers-list" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
+    </div>
+  </div>
+
+  <script type="module" src="js/team.js"></script>
+</body>
+</html>
