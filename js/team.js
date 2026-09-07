@@ -1,4 +1,4 @@
-import { db, ref, onValue, push, get, set } from "./firebase-config.js";
+import { db, ref, onValue, push, get, set, update } from "./firebase-config.js";
 import { normalizeArabicText, soundFx } from "./utils.js";
 
 const urlParams = new URLSearchParams(window.location.search);
@@ -15,49 +15,83 @@ const feedbackEl = document.getElementById("feedback-msg");
 const listEl = document.getElementById("accepted-answers-list");
 const countEl = document.getElementById("team-valid-count");
 
-teamHeader.className = `team-header glass ${teamKey}`;
+if (teamHeader) teamHeader.className = `team-header glass ${teamKey}`;
 
 let currentGameState = null;
 
+// --- إرسال إشارة انضمام الفريق فور فتح الصفحة لتمكين التشغيل التلقائي ---
+update(ref(db, "gameState"), {
+  [`${teamKey}Joined`]: true,
+  [`${teamKey}Status`]: "🟢 متصل وجاهز"
+});
+
+// الاستماع المباشر لتغيرات اللعبة
 onValue(ref(db, "gameState"), (snapshot) => {
   currentGameState = snapshot.val();
   if (!currentGameState) return;
 
-  const myTeamName = teamKey === "team1" ? currentGameState.settings.team1Name : currentGameState.settings.team2Name;
-  teamNameEl.innerText = myTeamName;
+  // تحديث اسم الفريق
+  const myTeamName = teamKey === "team1" 
+    ? (currentGameState.settings?.team1Name || "الفريق الأول") 
+    : (currentGameState.settings?.team2Name || "الفريق الثاني");
+    
+  if (teamNameEl) teamNameEl.innerText = myTeamName;
 
-  if (currentGameState.currentQuestion) {
-    questionEl.innerText = currentGameState.currentQuestion.question;
-    categoryEl.innerText = currentGameState.currentQuestion.category;
+  // 1. مرحلة العد التنازلي قبل السؤال
+  if (currentGameState.isCountdown) {
+    if (timerEl) timerEl.innerText = currentGameState.countdownValue;
+    if (questionEl) questionEl.innerText = currentGameState.statusMessage || "استعدوا للإجابة...";
+    if (categoryEl) categoryEl.innerText = "العد التنازلي";
+    if (inputEl) inputEl.disabled = true;
+    if (btnSend) btnSend.disabled = true;
+    return;
   }
 
-  timerEl.innerText = currentGameState.timer;
+  // 2. مرحلة السؤال المباشر
+  if (currentGameState.isActive) {
+    if (inputEl) inputEl.disabled = false;
+    if (btnSend) btnSend.disabled = false;
+    
+    if (currentGameState.currentQuestion) {
+      if (questionEl) questionEl.innerText = currentGameState.currentQuestion.question;
+      if (categoryEl) categoryEl.innerText = currentGameState.currentQuestion.category || "التصنيف";
+    }
+  } else {
+    // 3. حالة الانتظار
+    if (inputEl) inputEl.disabled = true;
+    if (btnSend) btnSend.disabled = true;
+    if (questionEl) questionEl.innerText = "في انتظار بدء الجولة...";
+  }
+
+  if (timerEl) timerEl.innerText = currentGameState.timer ?? 30;
 
   // تحديث قائمة الإجابات للمستخدم
   const myAnswersObj = currentGameState[`${teamKey}Answers`] || {};
   const myAnswersArr = Object.values(myAnswersObj);
   const validAnswers = myAnswersArr.filter(a => a.valid);
 
-  countEl.innerText = validAnswers.length;
-  listEl.innerHTML = "";
-  validAnswers.forEach(a => {
-    const div = document.createElement("div");
-    div.className = "answer-chip";
-    div.innerText = `✅ ${a.text}`;
-    listEl.appendChild(div);
-  });
+  if (countEl) countEl.innerText = validAnswers.length;
+  if (listEl) {
+    listEl.innerHTML = "";
+    validAnswers.forEach(a => {
+      const div = document.createElement("div");
+      div.className = "answer-chip";
+      div.innerText = `✅ ${a.text}`;
+      listEl.appendChild(div);
+    });
+  }
 });
 
 // إرسال الإجابة
-btnSend.addEventListener("click", submitAnswer);
-inputEl.addEventListener("keypress", (e) => { if (e.key === "Enter") submitAnswer(); });
+if (btnSend) btnSend.addEventListener("click", submitAnswer);
+if (inputEl) inputEl.addEventListener("keypress", (e) => { if (e.key === "Enter") submitAnswer(); });
 
 async function submitAnswer() {
   const text = inputEl.value.trim();
   if (!text || !currentGameState || !currentGameState.isActive) return;
 
   const normalizedInput = normalizeArabicText(text);
-  const acceptedList = currentGameState.currentQuestion.acceptedAnswers.map(a => normalizeArabicText(a));
+  const acceptedList = (currentGameState.currentQuestion?.acceptedAnswers || []).map(a => normalizeArabicText(a));
   const myAnswersObj = currentGameState[`${teamKey}Answers`] || {};
   const myAnswersArr = Object.values(myAnswersObj);
 
@@ -99,6 +133,7 @@ async function submitAnswer() {
 }
 
 function showFeedback(msg, className) {
+  if (!feedbackEl) return;
   feedbackEl.innerText = msg;
   feedbackEl.className = `feedback-msg ${className}`;
   setTimeout(() => { feedbackEl.innerText = ""; }, 2500);
